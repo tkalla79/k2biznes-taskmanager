@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>K2Biznes — TaskManager v3</title>
+<title>K2Biznes — TaskManager</title>
 <script>
 /* MSAL Browser 2.38.3 - embedded */
 /*! @azure/msal-browser v2.38.3 2023-10-27 */
@@ -611,7 +611,6 @@ select.filter-select:focus { border-color: var(--border-focus); }
 .toast.success { border-left: 3px solid var(--success); }
 .toast.error { border-left: 3px solid var(--danger); }
 .toast.info { border-left: 3px solid var(--accent); }
-.toast.warning { border-left: 3px solid var(--warning); }
 @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } }
 
 /* ========== EMPTY STATE ========== */
@@ -705,33 +704,6 @@ let state = {
   demoMode: false,
 };
 
-// ============================================================
-// SHAREPOINT FIELD MAP (auto-discovered)
-// Maps our friendly names → actual SP internal names
-// ============================================================
-let spFieldMap = null; // populated by discoverColumns()
-
-// Expected display names → possible internal name variants
-const FIELD_ALIASES = {
-  Title:             ['Title'],
-  Opis:              ['Opis', 'Description', 'field_1', '_x004f_pis'],
-  Projekt:           ['Projekt', 'field_2', 'Projekt0'],
-  EtapProjektu:      ['EtapProjektu', 'Etap_x0020_projektu', 'Etap_x0020_Projektu', 'field_3', 'EtapProjektu0'],
-  PrzypisaneDo:      ['PrzypisaneDo', 'Przypisane_x0020_do', 'Przypisane_x0020_Do', 'field_4', 'PrzypisaneDo0'],
-  Status:            ['Status'],
-  Priorytet:         ['Priorytet', 'field_5', 'Priorytet0'],
-  DataRozpoczecia:   ['DataRozpoczecia', 'Data_x0020_rozpocz_x0119_cia', 'DataRozpoczecia0', 'field_6'],
-  TerminWykonania:   ['TerminWykonania', 'Termin_x0020_wykonania', 'TerminWykonania0', 'field_7'],
-  DataZakończenia:   ['DataZako_x0144_czenia', 'DataZako_x0144_czenia0', 'DataZakończenia', 'field_8'],
-  ProcentUkończenia: ['ProcentUko_x0144_czenia', '_x0025_Uko_x0144_czenia', '_x0025__x0020_uko_x0144_czenia', 'ProcentUkończenia', 'field_9'],
-  Kategoria:         ['Kategoria', 'field_10', 'Kategoria0'],
-  WymagaAkceptacji:  ['WymagaAkceptacji', 'Wymaga_x0020_akceptacji', 'field_11', 'WymagaAkceptacji0'],
-  Akceptujący:       ['Akceptuj_x0105_cy', 'Akceptuj_x0105_cy0', 'Akceptujący', 'field_12'],
-  StatusAkceptacji:  ['StatusAkceptacji', 'Status_x0020_akceptacji', 'StatusAkceptacji0', 'field_13'],
-  KomentarzAkceptacji: ['KomentarzAkceptacji', 'Komentarz_x0020_akceptacji', 'KomentarzAkceptacji0', 'field_14'],
-  DataAkceptacji:    ['DataAkceptacji', 'Data_x0020_akceptacji', 'DataAkceptacji0', 'field_15'],
-};
-
 const STATUSES = ['Nowe', 'W toku', 'Do akceptacji', 'Zatwierdzone', 'Zakończone', 'Wstrzymane', 'Odrzucone'];
 const PRIORITIES = ['Krytyczny', 'Wysoki', 'Średni', 'Niski'];
 const ETAPY = ['Identyfikacja naboru', 'Przygotowanie koncepcji', 'Pisanie wniosku', 'Kompletowanie załączników', 'Weryfikacja wewnętrzna', 'Złożenie wniosku', 'Ocena formalna', 'Ocena merytoryczna', 'Podpisanie umowy', 'Realizacja projektu', 'Rozliczenie'];
@@ -812,154 +784,57 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const LIST_URL = `${GRAPH_BASE}/sites/${CONFIG.siteId}/lists/${CONFIG.listId}`;
 
 // Map SharePoint field names (internal) to our friendly names
-// Uses auto-discovered spFieldMap when available, falls back to aliases
+// SP internal names discovered: Opis=field_1, Projekt=field_2, EtapProjektu=field_3,
+// PrzypisaneDo=field_4, Status=field_5, Priorytet=field_6, DataRozpoczecia=field_7,
+// TerminWykonania=field_8, ProcentUkończenia=field_9, Kategoria=field_10,
+// WymagaAkceptacji=field_11, StatusAkceptacji=field_12, KomentarzAkceptacji=field_13,
+// DataAkceptacji=field_14
 function mapSPItem(item) {
   const f = item.fields || item;
-  
-  // Helper: get value by trying spFieldMap first, then aliases
-  function g(key, fallback) {
-    // If we have discovered mapping, use it directly
-    if (spFieldMap && spFieldMap[key]) {
-      const v = f[spFieldMap[key]];
-      if (v !== undefined && v !== null) return v;
-    }
-    // Fall back to trying all known aliases
-    const aliases = FIELD_ALIASES[key] || [key];
-    for (const alias of aliases) {
-      if (f[alias] !== undefined && f[alias] !== null) return f[alias];
-    }
-    return fallback;
-  }
-
-  const przypisane = g('PrzypisaneDo', '');
-  
   return {
     id: item.id || f.id,
-    Title: g('Title', ''),
-    Opis: g('Opis', ''),
-    Projekt: g('Projekt', ''),
-    Etap: g('EtapProjektu', ''),
-    PrzypisaneDo: typeof przypisane === 'object' ? (przypisane?.LookupValue || '') : przypisane,
-    PrzypisaneDoEmail: typeof przypisane === 'object' ? (przypisane?.Email || '') : '',
-    Status: g('Status', 'Nowe'),
-    Priorytet: g('Priorytet', 'Średni'),
-    DataRozpoczecia: g('DataRozpoczecia', ''),
-    TerminWykonania: g('TerminWykonania', ''),
-    DataZakończenia: g('DataZakończenia', ''),
-    ProcentUkończenia: g('ProcentUkończenia', 0),
-    Kategoria: g('Kategoria', ''),
-    WymagaAkceptacji: g('WymagaAkceptacji', false),
-    Akceptujący: (() => { const a = g('Akceptujący', ''); return typeof a === 'object' ? (a?.LookupValue || '') : a; })(),
-    StatusAkceptacji: g('StatusAkceptacji', ''),
-    KomentarzAkceptacji: g('KomentarzAkceptacji', ''),
-    DataAkceptacji: g('DataAkceptacji', ''),
+    Title: f.Title || '',
+    Opis: f.field_1 || f.Opis || '',
+    Projekt: f.field_2 || f.Projekt || '',
+    Etap: f.field_3 || f.EtapProjektu || '',
+    PrzypisaneDo: f.field_4?.LookupValue || f.field_4 || f.PrzypisaneDo || '',
+    PrzypisaneDoEmail: f.field_4?.Email || '',
+    Status: f.field_5 || f.Status || 'Nowe',
+    Priorytet: f.field_6 || f.Priorytet || 'Średni',
+    DataRozpoczecia: f.field_7 || f.DataRozpoczecia || '',
+    TerminWykonania: f.field_8 || f.TerminWykonania || '',
+    DataZakończenia: f.DataZako_x0144_czenia || f.DataZakończenia || '',
+    ProcentUkończenia: f.field_9 || f.ProcentUko_x0144_czenia || 0,
+    Kategoria: f.field_10 || f.Kategoria || '',
+    WymagaAkceptacji: f.field_11 || f.WymagaAkceptacji || false,
+    Akceptujący: f.Akceptuj_x0105_cy?.LookupValue || f.Akceptujący || '',
+    StatusAkceptacji: f.field_12 || f.StatusAkceptacji || '',
+    KomentarzAkceptacji: f.field_13 || f.KomentarzAkceptacji || '',
+    DataAkceptacji: f.field_14 || f.DataAkceptacji || '',
   };
 }
 
-// Convert our friendly names → actual SP internal names for write operations
 function toSPFields(task) {
-  const result = {};
-  
-  function put(friendlyKey, value) {
-    if (value === undefined) return;
-    // Use discovered name if available, otherwise use first alias (our best guess)
-    const spName = (spFieldMap && spFieldMap[friendlyKey]) || (FIELD_ALIASES[friendlyKey] && FIELD_ALIASES[friendlyKey][0]) || friendlyKey;
-    result[spName] = value;
-  }
-
-  put('Title', task.Title);
-  put('Opis', task.Opis);
-  put('Projekt', task.Projekt);
-  put('EtapProjektu', task.Etap);
-  put('Status', task.Status);
-  put('Priorytet', task.Priorytet);
-  put('DataRozpoczecia', task.DataRozpoczecia || null);
-  put('TerminWykonania', task.TerminWykonania || null);
-  put('Kategoria', task.Kategoria);
-  put('WymagaAkceptacji', task.WymagaAkceptacji || false);
-  
-  // Include approval fields if present in updates
-  if (task.StatusAkceptacji !== undefined) put('StatusAkceptacji', task.StatusAkceptacji);
-  if (task.KomentarzAkceptacji !== undefined) put('KomentarzAkceptacji', task.KomentarzAkceptacji);
-  if (task.DataAkceptacji !== undefined) put('DataAkceptacji', task.DataAkceptacji);
-  if (task.DataZakończenia !== undefined) put('DataZakończenia', task.DataZakończenia);
-  if (task.ProcentUkończenia !== undefined) put('ProcentUkończenia', task.ProcentUkończenia);
-
-  return result;
-}
-
-// ============================================================
-// COLUMN DISCOVERY — queries SP for actual internal field names
-// ============================================================
-async function discoverColumns() {
-  if (spFieldMap || state.demoMode) return; // already discovered or demo
-  try {
-    console.log('[K2] Discovering SharePoint column names...');
-    const data = await graphRequest(`${LIST_URL}/columns`);
-    const cols = data.value || [];
-    
-    // Build map: displayName → name (internal)
-    const byDisplay = {};
-    const byName = {};
-    cols.forEach(c => {
-      byDisplay[c.displayName] = c.name;
-      byName[c.name] = c.name;
-    });
-    
-    // For each friendly key, find the actual internal name
-    spFieldMap = {};
-    const missing = [];
-    for (const [key, aliases] of Object.entries(FIELD_ALIASES)) {
-      let found = false;
-      // First try: check if any alias matches an actual internal name
-      for (const alias of aliases) {
-        if (byName[alias]) {
-          spFieldMap[key] = alias;
-          found = true;
-          break;
-        }
-      }
-      // Second try: match by display name
-      if (!found) {
-        for (const alias of aliases) {
-          if (byDisplay[alias]) {
-            spFieldMap[key] = byDisplay[alias];
-            found = true;
-            break;
-          }
-        }
-      }
-      // Third try: fuzzy match display names (case-insensitive, ignoring spaces)
-      if (!found) {
-        const keyLower = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        for (const col of cols) {
-          const dispLower = (col.displayName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (dispLower === keyLower || dispLower.includes(keyLower) || keyLower.includes(dispLower)) {
-            spFieldMap[key] = col.name;
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found && key !== 'Title') { // Title always exists
-        missing.push(key);
-      }
-    }
-    
-    console.log('[K2] Field map discovered:', JSON.stringify(spFieldMap, null, 2));
-    if (missing.length > 0) {
-      console.warn('[K2] Columns not found in SP list (may need to be created):', missing);
-      showToast(`Uwaga: ${missing.length} kolumn nie znaleziono w liście SP: ${missing.join(', ')}`, 'warning');
-    }
-  } catch (e) {
-    console.error('[K2] Column discovery failed:', e);
-    showToast('Nie udało się wykryć kolumn SP. Używam domyślnych nazw.', 'warning');
-    // Use first alias as fallback for each key
-    spFieldMap = {};
-    for (const [key, aliases] of Object.entries(FIELD_ALIASES)) {
-      spFieldMap[key] = aliases[0];
-    }
-  }
+  const o = {
+    Title: task.Title,
+    field_1: task.Opis,
+    field_2: task.Projekt,
+    field_3: task.Etap,
+    field_4: task.PrzypisaneDo,
+    field_5: task.Status,
+    field_6: task.Priorytet,
+    field_7: task.DataRozpoczecia || null,
+    field_8: task.TerminWykonania || null,
+    field_9: task.ProcentUkończenia || 0,
+    field_10: task.Kategoria,
+    field_11: task.WymagaAkceptacji || false,
+    field_12: task.StatusAkceptacji || '',
+    field_13: task.KomentarzAkceptacji || '',
+    field_14: task.DataAkceptacji || null,
+  };
+  // Remove null/undefined to avoid SP errors on optional fields
+  Object.keys(o).forEach(k => { if (o[k] === undefined) delete o[k]; });
+  return o;
 }
 
 // ============================================================
@@ -971,7 +846,6 @@ async function loadTasks() {
     return;
   }
   try {
-    await discoverColumns(); // discover actual SP field names first
     const data = await graphRequest(`${LIST_URL}/items?$expand=fields&$top=500`);
     state.tasks = (data.value || []).map(mapSPItem);
   } catch (e) {
@@ -1004,24 +878,7 @@ async function updateTask(id, updates) {
     return;
   }
   try {
-    // Only send the fields that are actually being updated
-    const spUpdates = {};
-    for (const [key, value] of Object.entries(updates)) {
-      // Map our friendly name to SP internal name
-      let spKey = key;
-      if (spFieldMap) {
-        // Direct match in field map
-        if (spFieldMap[key]) spKey = spFieldMap[key];
-        // Also check if key is an "Etap" shorthand
-        else if (key === 'Etap' && spFieldMap['EtapProjektu']) spKey = spFieldMap['EtapProjektu'];
-      } else {
-        // No discovery yet - use first alias
-        const aliases = FIELD_ALIASES[key] || FIELD_ALIASES[key === 'Etap' ? 'EtapProjektu' : ''];
-        if (aliases) spKey = aliases[0];
-      }
-      spUpdates[spKey] = value;
-    }
-    await graphRequest(`${LIST_URL}/items/${id}/fields`, 'PATCH', spUpdates);
+    await graphRequest(`${LIST_URL}/items/${id}/fields`, 'PATCH', toSPFields({ ...state.tasks.find(t => t.id === id), ...updates }));
     const idx = state.tasks.findIndex(t => t.id === id);
     if (idx >= 0) Object.assign(state.tasks[idx], updates);
     showToast('Zaktualizowano', 'success');
