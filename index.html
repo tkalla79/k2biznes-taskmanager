@@ -679,12 +679,16 @@ let accessToken = null;
 let msalReady = false;
 
 async function initMsal() {
+  // Don't init MSAL if we're inside a popup or iframe
+  if (window !== window.parent || window.opener) {
+    console.log('Running in popup/iframe — skipping MSAL init');
+    return [];
+  }
   try {
     msalInstance = new msal.PublicClientApplication(msalConfig);
     await msalInstance.initialize();
-    // Clear any stuck interactions
+    await msalInstance.handleRedirectPromise().catch(() => {});
     const accounts = msalInstance.getAllAccounts();
-    try { await msalInstance.handleRedirectPromise(); } catch(e) {}
     msalReady = true;
     console.log('MSAL ready, accounts:', accounts.length);
     return accounts;
