@@ -446,6 +446,9 @@ let state = {
   showDetailModal: false,
   showEmailModal: false,
   showHistoryModal: false,
+  showTeamAddModal: false,
+  showTeamEditModal: false,
+  editingMember: null,
   user: null,
   projects: [],
   demoMode: false,
@@ -453,17 +456,67 @@ let state = {
   notifications: [],
 };
 
-// TEAM MEMBERS
-const TEAM = [
-  { id: 't1', name: 'Tomek Kalla', email: 'tomek@k2biznes.pl', role: 'Prezes / PM', avatar: 'TK', color: '#3b82f6' },
-  { id: 't2', name: 'Anna Kowalska', email: 'anna@k2biznes.pl', role: 'Specjalista ds. wniosków', avatar: 'AK', color: '#8b5cf6' },
-  { id: 't3', name: 'Marek Wiśniewski', email: 'marek@k2biznes.pl', role: 'Analityk finansowy', avatar: 'MW', color: '#10b981' },
-  { id: 't4', name: 'Katarzyna Zielińska', email: 'katarzyna@k2biznes.pl', role: 'Konsultant B+R', avatar: 'KZ', color: '#f59e0b' },
-  { id: 't5', name: 'Jan Nowicki', email: 'jan@k2biznes.pl', role: 'Specjalista ds. rozliczeń', avatar: 'JN', color: '#ef4444' },
-  { id: 't6', name: 'Piotr Mazur', email: 'piotr@k2biznes.pl', role: 'Business Development', avatar: 'PM', color: '#06b6d4' },
-  { id: 't7', name: 'Ewa Dąbrowska', email: 'ewa@k2biznes.pl', role: 'Asystentka projektowa', avatar: 'ED', color: '#ec4899' },
-  { id: 't8', name: 'Michał Lewandowski', email: 'michal@k2biznes.pl', role: 'Specjalista ds. technicznych', avatar: 'ML', color: '#f97316' },
+// TEAM MEMBERS — dynamic, stored in localStorage
+const DEFAULT_TEAM = [
+  { id: 't1', name: 'Tomek Kalla', email: 'tomek@k2biznes.pl', role: 'Prezes / PM', color: '#3b82f6' },
+  { id: 't2', name: 'Anna Kowalska', email: 'anna@k2biznes.pl', role: 'Specjalista ds. wniosków', color: '#8b5cf6' },
+  { id: 't3', name: 'Marek Wiśniewski', email: 'marek@k2biznes.pl', role: 'Analityk finansowy', color: '#10b981' },
+  { id: 't4', name: 'Katarzyna Zielińska', email: 'katarzyna@k2biznes.pl', role: 'Konsultant B+R', color: '#f59e0b' },
+  { id: 't5', name: 'Jan Nowicki', email: 'jan@k2biznes.pl', role: 'Specjalista ds. rozliczeń', color: '#ef4444' },
+  { id: 't6', name: 'Piotr Mazur', email: 'piotr@k2biznes.pl', role: 'Business Development', color: '#06b6d4' },
+  { id: 't7', name: 'Ewa Dąbrowska', email: 'ewa@k2biznes.pl', role: 'Asystentka projektowa', color: '#ec4899' },
+  { id: 't8', name: 'Michał Lewandowski', email: 'michal@k2biznes.pl', role: 'Specjalista ds. technicznych', color: '#f97316' },
 ];
+
+const TEAM_COLORS = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#06b6d4','#ec4899','#f97316','#6366f1','#14b8a6','#f43f5e','#a855f7'];
+
+function loadTeam() {
+  try {
+    const saved = localStorage.getItem('k2_team');
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return DEFAULT_TEAM;
+}
+
+function saveTeam() {
+  try { localStorage.setItem('k2_team', JSON.stringify(TEAM)); } catch(e) {}
+}
+
+function getAvatar(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+}
+
+function addTeamMember(name, email, role) {
+  const id = 't' + Date.now();
+  const color = TEAM_COLORS[TEAM.length % TEAM_COLORS.length];
+  TEAM.push({ id, name, email, role, color });
+  saveTeam();
+  addHistory('team', 'Dodano osobę', name);
+  showToast('Dodano: ' + name, 'success');
+}
+
+function removeTeamMember(id) {
+  const member = TEAM.find(m => m.id === id);
+  if (!member) return;
+  if (!confirm('Usunąć ' + member.name + ' z zespołu?')) return;
+  const idx = TEAM.findIndex(m => m.id === id);
+  if (idx >= 0) TEAM.splice(idx, 1);
+  saveTeam();
+  addHistory('team', 'Usunięto osobę', member.name);
+  showToast('Usunięto: ' + member.name, 'success');
+  render();
+}
+
+function editTeamMember(id) {
+  const member = TEAM.find(m => m.id === id);
+  if (!member) return;
+  state.editingMember = member;
+  state.showTeamEditModal = true;
+  render();
+}
+
+let TEAM = loadTeam();
 
 const STATUSES = ['Nowe', 'W toku', 'Do akceptacji', 'Zatwierdzone', 'Zakończone', 'Wstrzymane', 'Odrzucone'];
 const PRIORITIES = ['Krytyczny', 'Wysoki', 'Średni', 'Niski'];
@@ -512,7 +565,7 @@ async function graphRequest(url, method = 'GET', body = null) {
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(url, opts);
   if (!resp.ok) { const err = await resp.text(); throw new Error(`Graph API ${resp.status}: ${err}`); }
-  if (resp.status === 204) return null;
+  if (resp.status === 204 || resp.status === 202) return null;
   return resp.json();
 }
 
@@ -909,6 +962,8 @@ function render() {
   if (state.showDetailModal && state.selectedTask) app.innerHTML += renderDetailModal();
   if (state.showEmailModal) app.innerHTML += renderEmailModal();
   if (state.showHistoryModal) app.innerHTML += renderHistoryModal();
+  if (state.showTeamAddModal) app.innerHTML += renderTeamAddModal();
+  if (state.showTeamEditModal && state.editingMember) app.innerHTML += renderTeamEditModal();
   bindEvents();
 }
 
@@ -1044,7 +1099,7 @@ function renderDashboard() {
         <h3>Obciążenie zespołu</h3>
         <div class="team-bars">
           ${teamLoad.map(m => `<div class="team-bar-row">
-            <div class="team-bar-avatar" style="background:${m.color}">${m.avatar}</div>
+            <div class="team-bar-avatar" style="background:${m.color}">${getAvatar(m.name)}</div>
             <span class="team-bar-name">${esc(m.name)}</span>
             <div class="bar-track"><div class="bar-fill" style="width:${Math.round(m.count/maxLoad*100)}%;background:${m.color}"></div></div>
             <span class="bar-value">${m.count}</span>
@@ -1155,7 +1210,11 @@ function renderCompactCard(task) {
 function renderTeamPanel() {
   const activeTasks = state.tasks.filter(t => !['Zakończone','Wstrzymane'].includes(t.Status));
   return `<div class="section-page">
-    <div class="section-header"><h2>${ICO.team} Zespół K2Biznes</h2><span class="header-badge">${TEAM.length} osób</span></div>
+    <div class="section-header">
+      <h2>${ICO.team} Zespół K2Biznes</h2>
+      <span class="header-badge">${TEAM.length} osób</span>
+      <button class="btn btn-primary btn-sm" onclick="state.showTeamAddModal=true;render()">${ICO.plus} Dodaj osobę</button>
+    </div>
     <div class="team-grid">
       ${TEAM.map(m => {
         const memberTasks = activeTasks.filter(t => t.PrzypisaneDo === m.name);
@@ -1167,7 +1226,7 @@ function renderTeamPanel() {
 
         return `<div class="team-member-card">
           <div class="member-header">
-            <div class="member-avatar" style="background:${m.color}">${m.avatar}</div>
+            <div class="member-avatar" style="background:${m.color}">${getAvatar(m.name)}</div>
             <div class="member-info">
               <div class="member-name">${esc(m.name)}</div>
               <div class="member-role">${esc(m.role)}</div>
@@ -1189,6 +1248,8 @@ function renderTeamPanel() {
           <div class="member-actions">
             <button class="btn btn-sm" onclick="emailMember('${m.email}','${esc(m.name)}')">${ICO.mail} Email</button>
             <button class="btn btn-sm" onclick="filterByPerson('${esc(m.name)}')">${ICO.list} Zadania</button>
+            <button class="btn btn-sm" onclick="editTeamMember('${m.id}')" title="Edytuj">✎</button>
+            <button class="btn btn-sm btn-danger" onclick="removeTeamMember('${m.id}')" title="Usuń">✕</button>
           </div>
         </div>`;
       }).join('')}
@@ -1496,7 +1557,8 @@ function closeModal(e) {
   if (e.target.classList.contains('modal-overlay')) {
     state.showCreateModal = false; state.showDetailModal = false;
     state.showEmailModal = false; state.showHistoryModal = false;
-    state.selectedTask = null; render();
+    state.showTeamAddModal = false; state.showTeamEditModal = false;
+    state.selectedTask = null; state.editingMember = null; render();
   }
 }
 
@@ -1552,6 +1614,65 @@ async function refreshTasks() {
   state.isLoading = true; render();
   try { await loadTasks(); extractMeta(); checkDeadlines(); } catch (e) {}
   state.isLoading = false; render();
+}
+
+// TEAM ADD MODAL
+function renderTeamAddModal() {
+  return `<div class="modal-overlay open" onclick="closeModal(event)"><div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header"><h2>${ICO.team} Dodaj osobę do zespołu</h2><button class="modal-close" onclick="closeTeamModals()">${ICO.close}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Imię i nazwisko *</label><input type="text" id="tm-name" placeholder="np. Jan Kowalski"></div>
+      <div class="form-group"><label>Email *</label><input type="text" id="tm-email" placeholder="jan@k2biznes.pl"></div>
+      <div class="form-group"><label>Rola / stanowisko</label><input type="text" id="tm-role" placeholder="np. Specjalista ds. wniosków"></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeTeamModals()">Anuluj</button><button class="btn btn-primary" onclick="submitAddMember()">Dodaj</button></div>
+  </div></div>`;
+}
+
+function renderTeamEditModal() {
+  const m = state.editingMember;
+  if (!m) return '';
+  return `<div class="modal-overlay open" onclick="closeModal(event)"><div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header"><h2>Edytuj: ${esc(m.name)}</h2><button class="modal-close" onclick="closeTeamModals()">${ICO.close}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Imię i nazwisko *</label><input type="text" id="tme-name" value="${esc(m.name)}"></div>
+      <div class="form-group"><label>Email *</label><input type="text" id="tme-email" value="${esc(m.email)}"></div>
+      <div class="form-group"><label>Rola / stanowisko</label><input type="text" id="tme-role" value="${esc(m.role)}"></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeTeamModals()">Anuluj</button><button class="btn btn-primary" onclick="submitEditMember('${m.id}')">Zapisz</button></div>
+  </div></div>`;
+}
+
+function submitAddMember() {
+  const name = document.getElementById('tm-name')?.value?.trim();
+  const email = document.getElementById('tm-email')?.value?.trim();
+  const role = document.getElementById('tm-role')?.value?.trim() || '';
+  if (!name || !email) { showToast('Podaj imię i email', 'error'); return; }
+  addTeamMember(name, email, role);
+  closeTeamModals();
+}
+
+function submitEditMember(id) {
+  const name = document.getElementById('tme-name')?.value?.trim();
+  const email = document.getElementById('tme-email')?.value?.trim();
+  const role = document.getElementById('tme-role')?.value?.trim() || '';
+  if (!name || !email) { showToast('Podaj imię i email', 'error'); return; }
+  const member = TEAM.find(m => m.id === id);
+  if (member) {
+    const oldName = member.name;
+    member.name = name; member.email = email; member.role = role;
+    saveTeam();
+    addHistory('team', 'Edytowano osobę', oldName + ' → ' + name);
+    showToast('Zaktualizowano: ' + name, 'success');
+  }
+  closeTeamModals();
+}
+
+function closeTeamModals() {
+  state.showTeamAddModal = false;
+  state.showTeamEditModal = false;
+  state.editingMember = null;
+  render();
 }
 
 function bindEvents() {
