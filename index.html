@@ -676,11 +676,23 @@ const msalConfig = {
 let msalInstance = null;
 let currentAccount = null;
 let accessToken = null;
+let msalReady = false;
 
-try {
-  msalInstance = new msal.PublicClientApplication(msalConfig);
-} catch (e) {
-  console.error('MSAL init error:', e);
+async function initMsal() {
+  try {
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+    await msalInstance.initialize();
+    // Clear any stuck interactions
+    const accounts = msalInstance.getAllAccounts();
+    try { await msalInstance.handleRedirectPromise(); } catch(e) {}
+    msalReady = true;
+    console.log('MSAL ready, accounts:', accounts.length);
+    return accounts;
+  } catch (e) {
+    console.error('MSAL init error:', e);
+    msalReady = false;
+    return [];
+  }
 }
 
 // ============================================================
@@ -893,8 +905,8 @@ async function deleteTask(id) {
 // AUTH
 // ============================================================
 async function login() {
-  if (!msalInstance) {
-    showToast('MSAL nie załadował się. Sprawdź połączenie internetowe.', 'error');
+  if (!msalInstance || !msalReady) {
+    showToast('MSAL się inicjalizuje, spróbuj za chwilę...', 'info');
     return;
   }
   try {
@@ -940,10 +952,7 @@ function logout() {
 
 // On page load — check for existing session
 async function checkExistingSession() {
-  if (!msalInstance) return;
-  await msalInstance.initialize();
-  const resp = await msalInstance.handleRedirectPromise();
-  const accounts = msalInstance.getAllAccounts();
+  const accounts = await initMsal();
   if (accounts.length > 0) {
     currentAccount = accounts[0];
     state.user = { name: accounts[0].name, email: accounts[0].username };
