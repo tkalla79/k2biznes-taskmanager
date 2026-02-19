@@ -348,6 +348,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .form-group textarea { resize:vertical; min-height:60px; }
 .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline:none; border-color:var(--accent); }
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* Multi-select assignee */
+.multi-select-box { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:6px; max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
+.ms-option { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:4px; cursor:pointer; font-size:13px; transition:background .1s; }
+.ms-option:hover { background:var(--bg2); }
+.ms-option input[type="checkbox"] { accent-color:var(--accent); flex-shrink:0; }
+.ms-avatar { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:white; flex-shrink:0; }
+.assignee-chip { display:inline-flex; align-items:center; gap:3px; background:var(--bg3); padding:2px 6px; border-radius:10px; font-size:11px; margin:1px; white-space:nowrap; }
 .form-group input[type="checkbox"] { accent-color:var(--accent); }
 
 /* DETAIL */
@@ -588,9 +596,21 @@ function mapSPItem(item) {
 }
 
 function toSPFields(task) {
-  return { Title: task.Title, Opis: task.Opis, Projekt: task.Projekt, EtapProjektu: task.Etap,
-    Status: task.Status, Priorytet: task.Priorytet, DataRozpoczecia: task.DataRozpoczecia || null,
-    TerminWykonania: task.TerminWykonania || null, Kategoria: task.Kategoria, WymagaAkceptacji: task.WymagaAkceptacji || false };
+  const fields = { Title: task.Title };
+  if (task.Opis !== undefined) fields.Opis = task.Opis;
+  if (task.Projekt !== undefined) fields.Projekt = task.Projekt;
+  if (task.Etap !== undefined) fields.EtapProjektu = task.Etap;
+  if (task.Status !== undefined) fields.Status = task.Status;
+  if (task.Priorytet !== undefined) fields.Priorytet = task.Priorytet;
+  if (task.DataRozpoczecia !== undefined) fields.DataRozpoczecia = task.DataRozpoczecia || null;
+  if (task.TerminWykonania !== undefined) fields.TerminWykonania = task.TerminWykonania || null;
+  if (task.Kategoria !== undefined) fields.Kategoria = task.Kategoria;
+  if (task.WymagaAkceptacji !== undefined) fields.WymagaAkceptacji = task.WymagaAkceptacji;
+  if (task.PrzypisaneDo !== undefined) fields.PrzypisaneDo = task.PrzypisaneDo;
+  if (task.ProcentUkończenia !== undefined) fields.ProcentUkończenia = task.ProcentUkończenia;
+  if (task.Akceptujący !== undefined) fields.Akceptujący = task.Akceptujący;
+  if (task.StatusAkceptacji !== undefined) fields.StatusAkceptacji = task.StatusAkceptacji;
+  return fields;
 }
 
 // ============================================================
@@ -642,7 +662,13 @@ async function updateTask(id, updates) {
   }
   try {
     const existing = state.tasks.find(t => t.id === id);
-    await graphRequest(`${LIST_URL}/items/${id}/fields`, 'PATCH', toSPFields({ ...existing, ...updates }));
+    // Only send changed fields to avoid overwriting with wrong format
+    const patchFields = {};
+    for (const [key, val] of Object.entries(updates)) {
+      const spKey = key === 'Etap' ? 'EtapProjektu' : key;
+      if (val !== undefined) patchFields[spKey] = val;
+    }
+    await graphRequest(`${LIST_URL}/items/${id}/fields`, 'PATCH', patchFields);
     const idx = state.tasks.findIndex(t => t.id === id);
     if (idx >= 0) {
       const changes = Object.keys(updates).map(k => `${k}: ${state.tasks[idx][k]} → ${updates[k]}`).join(', ');
@@ -1039,7 +1065,7 @@ function renderDashboard() {
   // Team workload
   const teamLoad = TEAM.map(m => ({
     ...m,
-    count: tasks.filter(t => t.PrzypisaneDo === m.name && !['Zakończone','Wstrzymane'].includes(t.Status)).length
+    count: tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name) && !['Zakończone','Wstrzymane'].includes(t.Status)).length
   }));
   const maxLoad = Math.max(...teamLoad.map(t => t.count), 1);
 
@@ -1158,7 +1184,7 @@ function renderDashboard() {
 // ============================================================
 function renderMyTasks() {
   const myName = state.user?.name || '';
-  const myTasks = state.tasks.filter(t => t.PrzypisaneDo === myName || t.Akceptujący === myName);
+  const myTasks = state.tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(myName) || t.Akceptujący === myName);
   const active = myTasks.filter(t => !['Zakończone','Wstrzymane'].includes(t.Status));
   const toApprove = state.tasks.filter(t => t.Status === 'Do akceptacji' && t.Akceptujący === myName);
   const completed = myTasks.filter(t => t.Status === 'Zakończone');
@@ -1217,10 +1243,10 @@ function renderTeamPanel() {
     </div>
     <div class="team-grid">
       ${TEAM.map(m => {
-        const memberTasks = activeTasks.filter(t => t.PrzypisaneDo === m.name);
+        const memberTasks = activeTasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name));
         const overdueTasks = memberTasks.filter(isOverdue);
         const pendingApproval = state.tasks.filter(t => t.Status === 'Do akceptacji' && t.Akceptujący === m.name);
-        const totalDone = state.tasks.filter(t => t.PrzypisaneDo === m.name && t.Status === 'Zakończone').length;
+        const totalDone = state.tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name) && t.Status === 'Zakończone').length;
         const load = memberTasks.length;
         const loadClass = load >= 5 ? 'load-high' : load >= 3 ? 'load-med' : 'load-low';
 
@@ -1296,9 +1322,9 @@ function renderReports() {
         <table class="mini-table">
           <tr><th>Osoba</th><th>Aktywne</th><th>Przet.</th><th>Zakoń.</th></tr>
           ${TEAM.map(m => {
-            const act = tasks.filter(t => t.PrzypisaneDo===m.name && !['Zakończone','Wstrzymane'].includes(t.Status)).length;
-            const ov = tasks.filter(t => t.PrzypisaneDo===m.name && isOverdue(t)).length;
-            const dn = tasks.filter(t => t.PrzypisaneDo===m.name && t.Status==='Zakończone').length;
+            const act = tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name) && !['Zakończone','Wstrzymane'].includes(t.Status)).length;
+            const ov = tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name) && isOverdue(t)).length;
+            const dn = tasks.filter(t => (t.PrzypisaneDo||'').split(',').map(s=>s.trim()).includes(m.name) && t.Status==='Zakończone').length;
             return `<tr><td>${esc(m.name.split(' ')[0])}</td><td>${act}</td><td class="${ov?'text-danger':''}">${ov}</td><td>${dn}</td></tr>`;
           }).join('')}
         </table>
@@ -1573,7 +1599,7 @@ async function submitCreate() {
   const task = {
     Title: title, Opis: document.getElementById('f-desc')?.value || '',
     Projekt: document.getElementById('f-project')?.value || '', Etap: document.getElementById('f-stage')?.value || '',
-    PrzypisaneDo: document.getElementById('f-assignee')?.value || '', Status: document.getElementById('f-status')?.value || 'Nowe',
+    PrzypisaneDo: [...document.querySelectorAll('.f-assignee-cb:checked')].map(cb => cb.value).join(', ') || '', Status: document.getElementById('f-status')?.value || 'Nowe',
     Priorytet: document.getElementById('f-priority')?.value || 'Średni', DataRozpoczecia: document.getElementById('f-start')?.value || '',
     TerminWykonania: document.getElementById('f-due')?.value || '', Kategoria: document.getElementById('f-category')?.value || '',
     WymagaAkceptacji: document.getElementById('f-approval')?.checked || false,
@@ -1589,6 +1615,13 @@ async function approveTask(id) { await updateTask(id, { Status:'Zatwierdzone', S
 async function rejectTask(id) { await updateTask(id, { Status:'Odrzucone', StatusAkceptacji:'Odrzucone' }); closeDetailModal(); }
 async function confirmDelete(id) { if (confirm('Usunąć to zadanie?')) { await deleteTask(id); closeDetailModal(); } }
 async function reassignTask(id, name) { await updateTask(id, { PrzypisaneDo: name }); if (state.selectedTask?.id===id) state.selectedTask.PrzypisaneDo = name; render(); }
+
+async function saveAssignees(id) {
+  const names = [...document.querySelectorAll('.d-assignee-cb:checked')].map(cb => cb.value).join(', ');
+  await updateTask(id, { PrzypisaneDo: names });
+  if (state.selectedTask?.id===id) state.selectedTask.PrzypisaneDo = names;
+  render();
+}
 
 function emailAboutTask(id) {
   const t = state.tasks.find(t => t.id === id);
