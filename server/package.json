@@ -1,0 +1,19 @@
+{
+  "name": "task-dashboard-server",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.0.4",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.0",
+    "isomorphic-fetch": "^3.0.0",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^4.2.1",
+    "xlsx": "^0.18.5"
+  }
+}

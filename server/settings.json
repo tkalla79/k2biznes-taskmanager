@@ -1,0 +1,63 @@
+{
+  "categories": [
+    "FENG",
+    "KPO",
+    "Horyzont Europa",
+    "Konsulting",
+    "Marketing",
+    "Administracja",
+    "Doradztwo",
+    "Wewnętrzne"
+  ],
+  "statuses": [
+    "Do zrobienia",
+    "W trakcie",
+    "Do weryfikacji",
+    "Zakończone",
+    "Zablokowane"
+  ],
+  "priorities": [
+    "Krytyczny",
+    "Wysoki",
+    "Średni",
+    "Niski"
+  ],
+  "roles": [
+    "PM",
+    "Kierownik",
+    "Specjalista ds. FENG",
+    "Specjalista ds. KPO",
+    "Analityk",
+    "Marketing",
+    "Doradca",
+    "Administracja",
+    "Konsultant"
+  ],
+  "wipLimits": {
+    "W trakcie": 8,
+    "Do weryfikacji": 4
+  },
+  "statusColors": {
+    "Do zrobienia": "#94a3b8",
+    "W trakcie": "#3b82f6",
+    "Do weryfikacji": "#f59e0b",
+    "Zakończone": "#22c55e",
+    "Zablokowane": "#ef4444"
+  },
+  "priorityColors": {
+    "Krytyczny": "#dc2626",
+    "Wysoki": "#f97316",
+    "Średni": "#eab308",
+    "Niski": "#94a3b8"
+  },
+  "categoryColors": {
+    "FENG": "#1B73E8",
+    "KPO": "#34A853",
+    "Horyzont Europa": "#9C27B0",
+    "Konsulting": "#FF6D00",
+    "Marketing": "#E91E63",
+    "Administracja": "#607D8B",
+    "Doradztwo": "#00BCD4",
+    "Wewnętrzne": "#795548"
+  }
+}
